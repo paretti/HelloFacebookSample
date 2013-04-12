@@ -54,13 +54,22 @@
 
 @synthesize ble;
 
+
+- (void)sendToDevice:(NSString*)message
+{
+    NSString *s = [NSString stringWithFormat:@"%@\r", message];
+    NSData* d = [s dataUsingEncoding:NSASCIIStringEncoding];
+    
+    [ble write:d];
+}
+
 #pragma mark - UIViewController
 
 - (void)viewDidLoad {    
     [super viewDidLoad];
     
     // Create Login View so that the app will be granted "status_update" permission.
-    FBLoginView *loginview = [[FBLoginView alloc] init];
+    FBLoginView *loginview = [[FBLoginView alloc] initWithReadPermissions:[NSArray arrayWithObject:@"read_mailbox"]];
     
     loginview.frame = CGRectOffset(loginview.frame, 5, 5);
     loginview.delegate = self;
@@ -68,6 +77,10 @@
     [self.view addSubview:loginview];
 
     [loginview sizeToFit];
+    
+    ble = [[BLE alloc] init];
+    [ble controlSetup:1];
+    ble.delegate = self;
 }
 
 - (void)viewDidUnload {
@@ -137,7 +150,7 @@
     // we defer request for permission to post to the moment of post, then we check for the permission
     if ([FBSession.activeSession.permissions indexOfObject:@"publish_actions"] == NSNotFound) {
         // if we don't already have the permission, then we request it now
-        [FBSession.activeSession requestNewPublishPermissions:@[@"publish_actions"]
+        [FBSession.activeSession requestNewPublishPermissions:@[@"publish_actions, read_inbox"]
                                               defaultAudience:FBSessionDefaultAudienceFriends
                                           completionHandler:^(FBSession *session, NSError *error) {
                                               if (!error) {
@@ -311,6 +324,25 @@
 }
 
 
+- (IBAction)getPosts
+{
+    [FBRequestConnection startWithGraphPath:@"me/inbox"
+                           completionHandler:^(FBRequestConnection *connection, id result, NSError *error) {
+                              
+                               NSArray *posts = [result objectForKey:@"data"];
+                               int num_unread = 0;
+                               for (NSDictionary* post in posts)
+                               {
+                                   num_unread += [[post objectForKey:@"unread"] integerValue];
+                                   
+                               }
+                               NSString* message = [NSString stringWithFormat:@"%i", num_unread];
+                               [self sendToDevice:message];
+                               outputLabel.text = message;
+                               printf([message UTF8String]);
+                           }];
+    
+}
 
 
 
@@ -346,7 +378,7 @@
     
 }
 
-// When data is comming, this will be called
+// When data is coming, this will be called
 -(void) bleDidReceiveData:(unsigned char *)data length:(int)length
 {
     NSLog(@"Length: %d", length);
@@ -397,6 +429,19 @@
         [btnConnect setTitle:@"Connect" forState:UIControlStateNormal];
         [indConnecting stopAnimating];
     }
+    
+}
+
+- (IBAction)BLEShieldSend:(id)sender
+{
+    NSString *s;
+    if (outputLabel.text.length > 16)
+        s = [outputLabel.text substringToIndex:16];
+    else
+        s = outputLabel.text;
+    
+    s = [NSString stringWithFormat:@"%@\r\n", s];
+    [self sendToDevice:s];
 }
 
 
